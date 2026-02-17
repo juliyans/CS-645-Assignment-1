@@ -74,3 +74,20 @@ def validate_tree_topology(G: nx.DiGraph) -> None:
         raise ValueError(
             f"Max hop depth must be <= {MAX_HOPS}. Found {max_depth}."
         )
+
+# Check to identify leaf routers
+def leaves(G: nx.DiGraph) -> list[int]:
+    return [n for n in G.nodes if n != VICTIM and G.out_degree(n) == 0]
+
+
+def branch_root_of(G: nx.DiGraph, node: int) -> int:
+    # Return which first-hop branch/child of victim this node belongs to
+    cur = node
+    while True:
+        preds = list(G.predecessors(cur))
+        if not preds:
+            return cur  # should only happen for victim
+        p = preds[0]
+        if p == VICTIM:
+            return cur
+        cur = p
