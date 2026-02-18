@@ -1,5 +1,6 @@
 import networkx as nx
 from topology import load_topology, validate_tree_topology, leaves, branch_root_of
+from ppm import choose_hosts
 
 def main():
     G = load_topology("data/topology1.txt")
@@ -21,6 +22,14 @@ def main():
     print("Leaves grouped by branch:")
     for br, lfs in sorted(by_branch.items()):
         print(f"  Branch {br}: {sorted(lfs)}")
+
+    # After printing leaves grouped by branch:
+    print("\nHost selection testing")
+    h1 = choose_hosts(G, num_attackers=1, seed=42)
+    print(f"1 attacker: attackers={h1.attackers}, normal user={sorted(h1.normal_users)}")
+
+    h2 = choose_hosts(G, num_attackers=2, seed=42)
+    print(f"2 attackers: attackers={h2.attackers}, normal user={sorted(h2.normal_users)}")
 
 if __name__ == "__main__":
     main()
