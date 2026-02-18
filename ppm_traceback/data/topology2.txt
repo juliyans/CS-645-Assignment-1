@@ -1,0 +1,28 @@
+# Valid deep topology
+# victim/root = 0
+# 3 branches off victim (1,2,3)
+# routers excluding victim = 19 (1..19)
+# leaves: 17,18,19
+
+0 1
+0 2
+0 3
+
+1 4
+4 7
+7 10
+10 13
+13 15
+15 17
+
+2 5
+5 8
+8 11
+11 14
+14 16
+16 18
+
+3 6
+6 9
+9 12
+12 19

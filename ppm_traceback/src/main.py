@@ -51,7 +51,7 @@ def plot_convergence(results, title_prefix: str):
         plt.savefig(PLOT_DIR /f"{title_prefix}_convergence_x{x}.png", dpi=200)
 
 def main():
-    G = load_topology("data/topology1.txt")
+    G = load_topology("data/topology2.txt")
     validate_tree_topology(G)
 
     results1 = run_grid_one_attacker(G, P_VALUES, X_VALUES, trials=50, seed=123)
