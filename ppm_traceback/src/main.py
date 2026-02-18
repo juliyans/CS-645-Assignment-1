@@ -15,131 +15,104 @@ X_VALUES = [10, 100, 1000]
 
 
 # ---------------------------------------------------------------------------
-# Plot: Accuracy vs marking probability p  (one plot per x value)
-# Covers assignment part (a): compare across p values
+# Plot helpers
 # ---------------------------------------------------------------------------
 
 def plot_accuracy_vs_p(results: dict, title_prefix: str) -> None:
     """
-    For each x value: plot node vs edge sampling accuracy as p varies.
-    Physical significance: shows how marking probability affects traceback success.
+    Accuracy vs p — one line per x value, node and edge side by side.
+    Covers assignment part (a).
+    Physical significance: shows optimal p near 1/d. Too-high p causes
+    downstream routers to overwrite upstream marks, losing path information.
     """
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
+    colors = {10: "tab:blue", 100: "tab:orange", 1000: "tab:green"}
+
     for x in X_VALUES:
         node = [results[(x, p)].node_acc for p in P_VALUES]
         edge = [results[(x, p)].edge_acc for p in P_VALUES]
+        axes[0].plot(P_VALUES, node, marker="o", label=f"x={x}", color=colors[x])
+        axes[1].plot(P_VALUES, edge, marker="s", label=f"x={x}", color=colors[x])
 
-        plt.figure()
-        plt.plot(P_VALUES, node, marker="o", label="Node sampling")
-        plt.plot(P_VALUES, edge, marker="s", label="Edge sampling")
-        plt.xlabel("Marking probability p")
-        plt.ylabel("Accuracy (fraction of trials attacker found)")
-        plt.ylim(-0.05, 1.05)
-        plt.title(f"{title_prefix}: Accuracy vs p  (x={x})")
-        plt.grid(True, linestyle="--", alpha=0.4)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(PLOT_DIR / f"{title_prefix}_accuracy_vs_p_x{x}.png", dpi=200)
-        plt.close()
+    for ax, name in zip(axes, ["Node sampling", "Edge sampling"]):
+        ax.set_title(name)
+        ax.set_xlabel("Marking probability p")
+        ax.set_ylim(-0.05, 1.05)
+        ax.grid(True, linestyle="--", alpha=0.4)
+        ax.legend(title="Attacker rate")
 
+    axes[0].set_ylabel("Accuracy (fraction of trials attacker found)")
+    fig.suptitle(f"{title_prefix}: Accuracy vs p", fontsize=13)
+    plt.tight_layout()
+    plt.savefig(PLOT_DIR / f"{title_prefix}_accuracy_vs_p.png", dpi=200)
+    plt.close()
 
-# ---------------------------------------------------------------------------
-# Plot: Accuracy vs attacker rate multiplier x  (one plot per p value)
-# Covers assignment part (b): compare across x values
-# ---------------------------------------------------------------------------
 
 def plot_accuracy_vs_x(results: dict, title_prefix: str) -> None:
     """
-    For each p value: plot node vs edge sampling accuracy as x varies.
-    Physical significance: shows how attacker traffic volume affects traceback.
-    Higher x = more attack packets relative to normal traffic = easier to trace.
+    Accuracy vs x — one line per p value, node and edge side by side.
+    Covers assignment part (b).
+    Physical significance: higher x = more attack packets per unit time,
+    so the victim accumulates enough samples to reconstruct the path within
+    the time limit. Shows that low x can fail at high p or deep paths.
     """
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
+    colors = {0.2: "tab:blue", 0.4: "tab:orange", 0.5: "tab:green",
+              0.6: "tab:red", 0.8: "tab:purple"}
+
     for p in P_VALUES:
         node = [results[(x, p)].node_acc for x in X_VALUES]
         edge = [results[(x, p)].edge_acc for x in X_VALUES]
+        axes[0].plot(X_VALUES, node, marker="o", label=f"p={p}", color=colors[p])
+        axes[1].plot(X_VALUES, edge, marker="s", label=f"p={p}", color=colors[p])
 
-        plt.figure()
-        plt.plot(X_VALUES, node, marker="o", label="Node sampling")
-        plt.plot(X_VALUES, edge, marker="s", label="Edge sampling")
-        plt.xscale("log")
-        plt.xlabel("Attacker rate multiplier x  (log scale)")
-        plt.ylabel("Accuracy (fraction of trials attacker found)")
-        plt.ylim(-0.05, 1.05)
-        plt.title(f"{title_prefix}: Accuracy vs x  (p={p})")
-        plt.grid(True, linestyle="--", alpha=0.4)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(PLOT_DIR / f"{title_prefix}_accuracy_vs_x_p{p}.png", dpi=200)
-        plt.close()
+    for ax, name in zip(axes, ["Node sampling", "Edge sampling"]):
+        ax.set_title(name)
+        ax.set_xlabel("Attacker rate multiplier x (log scale)")
+        ax.set_xscale("log")
+        ax.set_ylim(-0.05, 1.05)
+        ax.grid(True, linestyle="--", alpha=0.4)
+        ax.legend(title="Marking prob")
+
+    axes[0].set_ylabel("Accuracy (fraction of trials attacker found)")
+    fig.suptitle(f"{title_prefix}: Accuracy vs x", fontsize=13)
+    plt.tight_layout()
+    plt.savefig(PLOT_DIR / f"{title_prefix}_accuracy_vs_x.png", dpi=200)
+    plt.close()
 
 
-# ---------------------------------------------------------------------------
-# Plot: Mean convergence packets vs p  (one plot per x value)
-# ---------------------------------------------------------------------------
-
-def plot_convergence_vs_p(results: dict, title_prefix: str) -> None:
+def plot_convergence(results: dict, title_prefix: str) -> None:
     """
-    For each x value: plot mean packets to converge as p varies.
-    Physical significance: shows how many attack packets the victim needs
-    to receive before the attack path can be reconstructed.
+    Mean ticks to converge vs p — one line per x, node and edge side by side.
+    Physical significance: fewer ticks = victim identifies attacker faster,
+    enabling quicker filtering/mitigation of the DoS attack.
     """
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
+    colors = {10: "tab:blue", 100: "tab:orange", 1000: "tab:green"}
+
     for x in X_VALUES:
-        node = [results[(x, p)].node_mean_conv for p in P_VALUES]
-        edge = [results[(x, p)].edge_mean_conv for p in P_VALUES]
+        node_y = [results[(x, p)].node_mean_conv or float("nan") for p in P_VALUES]
+        edge_y = [results[(x, p)].edge_mean_conv or float("nan") for p in P_VALUES]
+        axes[0].plot(P_VALUES, node_y, marker="o", label=f"x={x}", color=colors[x])
+        axes[1].plot(P_VALUES, edge_y, marker="s", label=f"x={x}", color=colors[x])
 
-        node_y = [float("nan") if v is None else v for v in node]
-        edge_y = [float("nan") if v is None else v for v in edge]
+    for ax, name in zip(axes, ["Node sampling", "Edge sampling"]):
+        ax.set_title(name)
+        ax.set_xlabel("Marking probability p")
+        ax.grid(True, linestyle="--", alpha=0.4)
+        ax.legend(title="Attacker rate")
 
-        plt.figure()
-        plt.plot(P_VALUES, node_y, marker="o", label="Node sampling")
-        plt.plot(P_VALUES, edge_y, marker="s", label="Edge sampling")
-        plt.xlabel("Marking probability p")
-        plt.ylabel("Mean attack packets to converge")
-        plt.title(f"{title_prefix}: Convergence vs p  (x={x})")
-        plt.grid(True, linestyle="--", alpha=0.4)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(PLOT_DIR / f"{title_prefix}_convergence_vs_p_x{x}.png", dpi=200)
-        plt.close()
+    axes[0].set_ylabel("Mean ticks to converge")
+    fig.suptitle(f"{title_prefix}: Convergence speed vs p", fontsize=13)
+    plt.tight_layout()
+    plt.savefig(PLOT_DIR / f"{title_prefix}_convergence.png", dpi=200)
+    plt.close()
 
-
-# ---------------------------------------------------------------------------
-# Plot: Mean convergence packets vs x  (one plot per p value)
-# ---------------------------------------------------------------------------
-
-def plot_convergence_vs_x(results: dict, title_prefix: str) -> None:
-    """
-    For each p value: plot mean packets to converge as x varies.
-    """
-    for p in P_VALUES:
-        node = [results[(x, p)].node_mean_conv for x in X_VALUES]
-        edge = [results[(x, p)].edge_mean_conv for x in X_VALUES]
-
-        node_y = [float("nan") if v is None else v for v in node]
-        edge_y = [float("nan") if v is None else v for v in edge]
-
-        plt.figure()
-        plt.plot(X_VALUES, node_y, marker="o", label="Node sampling")
-        plt.plot(X_VALUES, edge_y, marker="s", label="Edge sampling")
-        plt.xscale("log")
-        plt.xlabel("Attacker rate multiplier x  (log scale)")
-        plt.ylabel("Mean attack packets to converge")
-        plt.title(f"{title_prefix}: Convergence vs x  (p={p})")
-        plt.grid(True, linestyle="--", alpha=0.4)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(PLOT_DIR / f"{title_prefix}_convergence_vs_x_p{p}.png", dpi=200)
-        plt.close()
-
-
-# ---------------------------------------------------------------------------
-# Helper: run all plots for one result set
-# ---------------------------------------------------------------------------
 
 def run_all_plots(results: dict, title_prefix: str) -> None:
-    plot_accuracy_vs_p(results, title_prefix)       # part (a)
-    plot_accuracy_vs_x(results, title_prefix)       # part (b)
-    plot_convergence_vs_p(results, title_prefix)
-    plot_convergence_vs_x(results, title_prefix)
+    plot_accuracy_vs_p(results, title_prefix)   # part (a)
+    plot_accuracy_vs_x(results, title_prefix)   # part (b)
+    plot_convergence(results, title_prefix)
 
 
 # ---------------------------------------------------------------------------
@@ -147,9 +120,9 @@ def run_all_plots(results: dict, title_prefix: str) -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    # Run on both topology files as required by the assignment.
-    # topology1: 5 leaves, varied depths (max 4 hops), richer branching.
-    # topology2: 3 leaves, deep linear paths (max 7 hops).
+    # Two topologies to show different characteristics:
+    #   topology1: 4 branches, max depth 5 hops -> shows x effect on convergence speed
+    #   topology2: 3 branches, max depth 7 hops -> shows p effect (p=0.8 fails at low x)
     topologies = [
         ("data/topology1.txt", "topo1"),
         ("data/topology2.txt", "topo2"),
@@ -163,30 +136,32 @@ def main() -> None:
         G = load_topology(topo_path)
         validate_tree_topology(G)
 
-        # Q1: single attacker + one normal user
         print("Running Q1 (1 attacker, 1 normal user)...")
         results1 = run_grid_one_attacker(G, P_VALUES, X_VALUES, trials=50, seed=123)
         run_all_plots(results1, f"Q1_{topo_label}")
 
-        # Q2: two attackers + one normal user
         print("Running Q2 (2 attackers, 1 normal user)...")
         results2 = run_grid_two_attackers(G, P_VALUES, X_VALUES, trials=50, seed=456)
         run_all_plots(results2, f"Q2_{topo_label}")
 
-        # Print a summary table to terminal
+        # Print summary tables
         print(f"\n--- Q1 accuracy summary ({topo_label}) ---")
-        print(f"{'x':>6}  {'p':>5}  {'Node acc':>10}  {'Edge acc':>10}")
+        print(f"{'x':>6}  {'p':>5}  {'Node acc':>10}  {'Edge acc':>10}  {'Node conv':>10}  {'Edge conv':>10}")
         for x in X_VALUES:
             for p in P_VALUES:
                 s = results1[(x, p)]
-                print(f"{x:>6}  {p:>5.2f}  {s.node_acc:>10.3f}  {s.edge_acc:>10.3f}")
+                nc = f"{s.node_mean_conv:.1f}" if s.node_mean_conv else "N/A"
+                ec = f"{s.edge_mean_conv:.1f}" if s.edge_mean_conv else "N/A"
+                print(f"{x:>6}  {p:>5.2f}  {s.node_acc:>10.3f}  {s.edge_acc:>10.3f}  {nc:>10}  {ec:>10}")
 
         print(f"\n--- Q2 accuracy summary ({topo_label}) ---")
-        print(f"{'x':>6}  {'p':>5}  {'Node acc':>10}  {'Edge acc':>10}")
+        print(f"{'x':>6}  {'p':>5}  {'Node acc':>10}  {'Edge acc':>10}  {'Node conv':>10}  {'Edge conv':>10}")
         for x in X_VALUES:
             for p in P_VALUES:
                 s = results2[(x, p)]
-                print(f"{x:>6}  {p:>5.2f}  {s.node_acc:>10.3f}  {s.edge_acc:>10.3f}")
+                nc = f"{s.node_mean_conv:.1f}" if s.node_mean_conv else "N/A"
+                ec = f"{s.edge_mean_conv:.1f}" if s.edge_mean_conv else "N/A"
+                print(f"{x:>6}  {p:>5.2f}  {s.node_acc:>10.3f}  {s.edge_acc:>10.3f}  {nc:>10}  {ec:>10}")
 
     print(f"\nDone! All plots saved to {PLOT_DIR}")
 

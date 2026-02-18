@@ -10,11 +10,18 @@ from src.ppm import (
     edge_build_graph, edge_guess_attackers_from_graph,
 )
 
-NORMAL_RATE = 1   # normal user sends 1 packet per simulation tick
+NORMAL_RATE = 1    # normal user sends 1 packet per simulation tick
+MAX_TICKS   = 500  # simulation time limit in ticks
+               # attack packets available = x * MAX_TICKS per trial
+               # x=10  -> up to 5,000 attack packets
+               # x=100 -> up to 50,000 attack packets
+               # x=1000-> up to 500,000 attack packets
+               # This makes x affect ACCURACY (not just convergence speed),
+               # matching the assignment intent that higher x = stronger signal.
 
 
 # ---------------------------------------------------------------------------
-# Q1: Single attacker
+# Q1: Single attacker + one normal user
 # ---------------------------------------------------------------------------
 
 def run_trial_one_attacker(
@@ -22,74 +29,63 @@ def run_trial_one_attacker(
     p: float,
     x: int,
     seed: int,
-    max_attack_packets: int = 5000,
+    max_ticks: int = MAX_TICKS,
 ) -> tuple[int, int, int | None, int | None]:
     """
-    One simulation trial with 1 attacker and 1 normal user.
+    One simulation trial: 1 attacker, 1 normal user.
 
     Each tick:
-      - Normal user sends NORMAL_RATE packet(s).
-      - Attacker sends x * NORMAL_RATE packets.
+      - Normal user sends NORMAL_RATE packet(s)  [slow background traffic]
+      - Attacker sends x * NORMAL_RATE packets    [x times faster]
 
-    Returns (node_success, edge_success, node_conv_pkts, edge_conv_pkts).
+    Runs for at most max_ticks ticks. Larger x gives the victim more marked
+    attack packets per tick, so accuracy increases with x.
+
+    Returns (node_success, edge_success, node_conv_ticks, edge_conv_ticks).
     """
     rng = random.Random(seed)
-
-    # Exactly 1 attacker, exactly 1 normal user (assignment requirement)
     hosts = choose_hosts(G, num_attackers=1, num_normal=1, seed=seed + 1)
     attacker = hosts.attackers[0]
-    normal = hosts.normal_users   # list of length 1
+    normal   = hosts.normal_users
 
     node_sampler = NodeSampler(p=p, seed=rng.randint(0, 10**9))
     edge_sampler = EdgeSampler(p=p, seed=rng.randint(0, 10**9))
 
-    node_obs: list[int] = []
+    node_obs: list[int]   = []
     edge_obs: list[tuple] = []
-
     node_conv: int | None = None
     edge_conv: int | None = None
-    attack_packets_seen = 0
 
-    while attack_packets_seen < max_attack_packets:
-        # --- Normal user background traffic (slow rate) ---
+    for tick in range(1, max_ticks + 1):
+        # Normal user background traffic
         for b in normal:
             for _ in range(NORMAL_RATE):
-                node_sampler.forward(G, b)   # advances RNG; mark not stored
+                node_sampler.forward(G, b)
                 edge_sampler.forward(G, b)
 
-        # --- Attacker traffic (x times faster than normal) ---
+        # Attacker traffic: x packets per tick
         for _ in range(x * NORMAL_RATE):
-            # Node sampling
             pktN = node_sampler.forward(G, attacker)
             if pktN.node is not None:
                 node_obs.append(pktN.node)
 
-            # Edge sampling
             pktE = edge_sampler.forward(G, attacker)
             edge_obs.append((pktE.start, pktE.end, pktE.distance))
 
-            attack_packets_seen += 1
+        # Check convergence once per tick (after all packets this tick)
+        if node_conv is None:
+            ordered = node_reconstruct_order(node_obs)
+            guess = node_guess_attacker_leaf(G, ordered, node_obs=node_obs)
+            if guess == attacker:
+                node_conv = tick
 
-            # --- Check node-sampling convergence ---
-            if node_conv is None:
-                ordered = node_reconstruct_order(node_obs)
-                # FIX: pass node_obs so leaf selection prefers observed leaves
-                guess = node_guess_attacker_leaf(G, ordered, node_obs=node_obs)
-                if guess == attacker:
-                    node_conv = attack_packets_seen
-
-            # --- Check edge-sampling convergence ---
-            if edge_conv is None:
-                by_d = edges_by_distance(edge_obs, victim=0)
-                path = edge_reconstruct_path(by_d, victim=0)
-                # After reverse, path[0] = farthest (attacker side)
-                # FIX: was path[-1] (closest to victim = branch root = WRONG)
-                guess_edge = path[0] if path else None
-                if guess_edge == attacker:
-                    edge_conv = attack_packets_seen
-
-            if node_conv is not None and edge_conv is not None:
-                break
+        if edge_conv is None:
+            by_d = edges_by_distance(edge_obs, victim=0)
+            path = edge_reconstruct_path(by_d, victim=0)
+            # path[0] = farthest router (attacker side) after reverse()
+            guess_edge = path[0] if path else None
+            if guess_edge == attacker:
+                edge_conv = tick
 
         if node_conv is not None and edge_conv is not None:
             break
@@ -103,7 +99,7 @@ def run_trial_one_attacker(
 class Stats:
     node_acc: float
     edge_acc: float
-    node_mean_conv: float | None
+    node_mean_conv: float | None   # mean ticks to convergence (successful trials only)
     edge_mean_conv: float | None
 
 
@@ -114,10 +110,7 @@ def run_grid_one_attacker(
     trials: int,
     seed: int = 0,
 ) -> dict[tuple[int, float], Stats]:
-    """
-    Run Q1 grid: p in p_values, x in x_values, for `trials` independent trials.
-    Returns dict keyed by (x, p).
-    """
+    """Run Q1 grid over all (x, p) combinations. Returns dict keyed by (x, p)."""
     rng = random.Random(seed)
     results: dict[tuple[int, float], Stats] = {}
 
@@ -130,21 +123,17 @@ def run_grid_one_attacker(
 
             for _ in range(trials):
                 s = rng.randint(0, 10**9)
-                n_ok, e_ok, n_conv, e_conv = run_trial_one_attacker(
-                    G, p=p, x=x, seed=s
-                )
+                n_ok, e_ok, n_conv, e_conv = run_trial_one_attacker(G, p=p, x=x, seed=s)
                 node_succ += n_ok
                 edge_succ += e_ok
-                if n_conv is not None:
-                    node_convs.append(n_conv)
-                if e_conv is not None:
-                    edge_convs.append(e_conv)
+                if n_conv is not None: node_convs.append(n_conv)
+                if e_conv is not None: edge_convs.append(e_conv)
 
             results[(x, p)] = Stats(
-                node_acc=node_succ / trials,
-                edge_acc=edge_succ / trials,
-                node_mean_conv=sum(node_convs) / len(node_convs) if node_convs else None,
-                edge_mean_conv=sum(edge_convs) / len(edge_convs) if edge_convs else None,
+                node_acc      = node_succ / trials,
+                edge_acc      = edge_succ / trials,
+                node_mean_conv= sum(node_convs) / len(node_convs) if node_convs else None,
+                edge_mean_conv= sum(edge_convs) / len(edge_convs) if edge_convs else None,
             )
 
     return results
@@ -159,43 +148,38 @@ def run_trial_two_attackers(
     p: float,
     x: int,
     seed: int,
-    max_attack_packets: int = 8000,
+    max_ticks: int = MAX_TICKS,
 ) -> tuple[int, int, int | None, int | None]:
     """
-    One simulation trial with 2 attackers (on different branches) and 1 normal user.
+    One simulation trial: 2 attackers (different branches), 1 normal user.
 
-    Convergence = victim correctly identifies EXACTLY the two true attacker leaves
-    (no missing, no false positives).
+    Convergence = victim identifies EXACTLY both true attacker leaves
+    (exact set match: no missing attackers, no false positives).
 
-    Returns (node_success, edge_success, node_conv_pkts, edge_conv_pkts).
+    Returns (node_success, edge_success, node_conv_ticks, edge_conv_ticks).
     """
     rng = random.Random(seed)
-
-    # Exactly 2 attackers on different branches, exactly 1 normal user
-    hosts = choose_hosts(G, num_attackers=2, num_normal=1, seed=seed + 1)
+    hosts     = choose_hosts(G, num_attackers=2, num_normal=1, seed=seed + 1)
     attackers = hosts.attackers[:]
-    normal = hosts.normal_users
+    normal    = hosts.normal_users
 
     node_sampler = NodeSampler(p=p, seed=rng.randint(0, 10**9))
     edge_sampler = EdgeSampler(p=p, seed=rng.randint(0, 10**9))
 
-    node_obs: list[int] = []
+    node_obs: list[int]   = []
     edge_obs: list[tuple] = []
-
     node_conv: int | None = None
     edge_conv: int | None = None
-    attack_packets_seen = 0
-
     true_set = set(attackers)
 
-    while attack_packets_seen < max_attack_packets:
-        # --- Normal user background traffic ---
+    for tick in range(1, max_ticks + 1):
+        # Normal user background traffic
         for b in normal:
             for _ in range(NORMAL_RATE):
                 node_sampler.forward(G, b)
                 edge_sampler.forward(G, b)
 
-        # --- Both attackers each send x packets per tick ---
+        # Both attackers each send x packets per tick
         for a in attackers:
             for _ in range(x * NORMAL_RATE):
                 pktN = node_sampler.forward(G, a)
@@ -205,28 +189,17 @@ def run_trial_two_attackers(
                 pktE = edge_sampler.forward(G, a)
                 edge_obs.append((pktE.start, pktE.end, pktE.distance))
 
-                attack_packets_seen += 1
+        # Check convergence once per tick
+        if node_conv is None:
+            guesses = node_guess_two_attackers(G, node_obs, max_attackers=2)
+            if set(guesses) == true_set:
+                node_conv = tick
 
-                # --- Node convergence: guess both attackers ---
-                if node_conv is None:
-                    guesses = node_guess_two_attackers(G, node_obs, max_attackers=2)
-                    # Exact match required: no missing, no false positives
-                    if set(guesses) == true_set:
-                        node_conv = attack_packets_seen
-
-                # --- Edge convergence: exact match required ---
-                if edge_conv is None:
-                    H = edge_build_graph(edge_obs, victim=0)
-                    guesses_edge = edge_guess_attackers_from_graph(H, victim=0)
-                    # FIX: exact match (was issubset, which allowed false positives)
-                    if set(guesses_edge) == true_set:
-                        edge_conv = attack_packets_seen
-
-                if node_conv is not None and edge_conv is not None:
-                    break
-
-            if node_conv is not None and edge_conv is not None:
-                break
+        if edge_conv is None:
+            H = edge_build_graph(edge_obs, victim=0)
+            guesses_edge = edge_guess_attackers_from_graph(H, victim=0)
+            if set(guesses_edge) == true_set:   # exact match required
+                edge_conv = tick
 
         if node_conv is not None and edge_conv is not None:
             break
@@ -243,10 +216,7 @@ def run_grid_two_attackers(
     trials: int,
     seed: int = 0,
 ) -> dict[tuple[int, float], Stats]:
-    """
-    Run Q2 grid: p in p_values, x in x_values, for `trials` independent trials.
-    Returns dict keyed by (x, p).
-    """
+    """Run Q2 grid over all (x, p) combinations. Returns dict keyed by (x, p)."""
     rng = random.Random(seed)
     results: dict[tuple[int, float], Stats] = {}
 
@@ -259,21 +229,17 @@ def run_grid_two_attackers(
 
             for _ in range(trials):
                 s = rng.randint(0, 10**9)
-                n_ok, e_ok, n_conv, e_conv = run_trial_two_attackers(
-                    G, p=p, x=x, seed=s
-                )
+                n_ok, e_ok, n_conv, e_conv = run_trial_two_attackers(G, p=p, x=x, seed=s)
                 node_succ += n_ok
                 edge_succ += e_ok
-                if n_conv is not None:
-                    node_convs.append(n_conv)
-                if e_conv is not None:
-                    edge_convs.append(e_conv)
+                if n_conv is not None: node_convs.append(n_conv)
+                if e_conv is not None: edge_convs.append(e_conv)
 
             results[(x, p)] = Stats(
-                node_acc=node_succ / trials,
-                edge_acc=edge_succ / trials,
-                node_mean_conv=sum(node_convs) / len(node_convs) if node_convs else None,
-                edge_mean_conv=sum(edge_convs) / len(edge_convs) if edge_convs else None,
+                node_acc      = node_succ / trials,
+                edge_acc      = edge_succ / trials,
+                node_mean_conv= sum(node_convs) / len(node_convs) if node_convs else None,
+                edge_mean_conv= sum(edge_convs) / len(edge_convs) if edge_convs else None,
             )
 
     return results
