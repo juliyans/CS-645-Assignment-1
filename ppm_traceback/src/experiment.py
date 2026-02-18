@@ -1,6 +1,6 @@
 import random
 import networkx as nx
-
+from dataclasses import dataclass
 from src.ppm import (
     choose_hosts,
     NodeSampler, EdgeSampler,
@@ -80,3 +80,48 @@ def run_trial_one_attacker(G: nx.DiGraph, p: float, x: int, seed: int, max_attac
     node_success = 1 if node_conv is not None else 0
     edge_success = 1 if edge_conv is not None else 0
     return node_success, edge_success, node_conv, edge_conv
+
+@dataclass
+class Stats:
+    node_acc: float
+    edge_acc: float
+    node_mean_conv: float | None
+    edge_mean_conv: float | None
+
+
+def run_grid_one_attacker(G: nx.DiGraph, p_values: list[float], x_values: list[int], trials: int, seed: int = 0):
+    """
+    Runs for 1 attacker:
+      p in (0.2, 0.4, 0.5, 0.6, 0.8)
+      x in (10, 100, 1000)
+    Returns dict keyed by (x,p)
+    """
+    rng = random.Random(seed)
+    results: dict[tuple[int, float], Stats] = {}
+
+    for x in x_values:
+        for p in p_values:
+            node_succ = 0
+            edge_succ = 0
+            node_convs = []
+            edge_convs = []
+
+            for t in range(trials):
+                s = rng.randint(0, 10**9)
+                n_ok, e_ok, n_conv, e_conv = run_trial_one_attacker(G, p=p, x=x, seed=s)
+
+                node_succ += n_ok
+                edge_succ += e_ok
+                if n_conv is not None:
+                    node_convs.append(n_conv)
+                if e_conv is not None:
+                    edge_convs.append(e_conv)
+
+            results[(x, p)] = Stats(
+                node_acc=node_succ / trials,
+                edge_acc=edge_succ / trials,
+                node_mean_conv=(sum(node_convs) / len(node_convs)) if node_convs else None,
+                edge_mean_conv=(sum(edge_convs) / len(edge_convs)) if edge_convs else None,
+            )
+
+    return results
