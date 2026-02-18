@@ -38,7 +38,7 @@ def load_topology(path: str) -> nx.DiGraph:
 def validate_tree_topology(G: nx.DiGraph) -> None:
     # Victim check
     if VICTIM not in G.nodes:
-        raise ValueError("Victim node 0 must exist")
+        raise ValueError("Victim node 0 exists")
 
     # Topology is a directed tree 
     # No cycles
