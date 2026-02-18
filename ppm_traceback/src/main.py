@@ -55,10 +55,10 @@ def main():
     validate_tree_topology(G)
 
     results = run_grid_one_attacker(G, P_VALUES, X_VALUES, trials=50, seed=123)
-    plot_accuracy(results, "part1_one_attacker")
-    plot_convergence(results, "part1_one_attacker")
+    plot_accuracy(results, "Q1_single_attacker")
+    plot_convergence(results, "Q1_single_attacker")
 
-    print("Done! Plots are saved under /data/plots.")
+    print("Done! Plots are saved under /data/plots/.")
 
 if __name__ == "__main__":
     main()
