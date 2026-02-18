@@ -3,9 +3,10 @@
 # CS 645 Assignment 1: Probabilistic Packet Marking with Node and Edge Sampling
 # Resources: 
 
+
 import matplotlib.pyplot as plt
 from src.topology import load_topology, validate_tree_topology
-from src.experiment import run_grid_one_attacker
+from src.experiment import run_grid_one_attacker, run_grid_two_attackers
 from pathlib import Path
 
 PLOT_DIR = Path("data/plots")
@@ -54,11 +55,15 @@ def main():
     G = load_topology("data/topology1.txt")
     validate_tree_topology(G)
 
-    results = run_grid_one_attacker(G, P_VALUES, X_VALUES, trials=50, seed=123)
-    plot_accuracy(results, "Q1_single_attacker")
-    plot_convergence(results, "Q1_single_attacker")
+    results1 = run_grid_one_attacker(G, P_VALUES, X_VALUES, trials=50, seed=123)
+    plot_accuracy(results1, "Q1_single")
+    plot_convergence(results1, "Q1_single")
 
-    print("Done! Plots are saved under /data/plots/.")
+    results2 = run_grid_two_attackers(G, P_VALUES, X_VALUES, trials=50, seed=456)
+    plot_accuracy(results2, "Q2_two")
+    plot_convergence(results2, "Q2_two")
+
+    print(f"Done! Plots are saved in {PLOT_DIR}")
 
 if __name__ == "__main__":
     main()

@@ -199,3 +199,57 @@ def edge_reconstruct_path(by_d: dict[int, set[tuple[int, int]]], victim: int = 0
     # Path is currently (closest to farthest) so reverse to (farthest to closest)
     path.reverse()
     return path
+
+def node_guess_two_attackers(G: nx.DiGraph, node_obs: list[int], max_attackers: int = 2) -> list[int]:
+    """
+    Heuristic for multi-attacker node sampling:
+    - group observed nodes by branch (child of victim)
+    - reconstruct per-branch
+    - pick up to 2 branches with the most observations (strongest signals)
+    Returns a list of guessed attacker leaves (unique).
+    """
+    # Group observations by branch root (child of victim)
+    by_branch: dict[int, list[int]] = {}
+    for n in node_obs:
+        br = branch_root_of(G, n)
+        by_branch.setdefault(br, []).append(n)
+
+    # Rank branches by number of observations (more packets -> more marks)
+    branches_sorted = sorted(by_branch.items(), key=lambda kv: len(kv[1]), reverse=True)
+
+    guesses: list[int] = []
+    for br, obs in branches_sorted:
+        ordered = node_reconstruct_order(obs)
+        guess = node_guess_attacker_leaf(G, ordered)
+        if guess is None:
+            continue
+        if guess not in guesses:
+            guesses.append(guess)
+        if len(guesses) >= max_attackers:
+            break
+
+    return guesses
+
+
+def edge_build_graph(samples: list[tuple[int | None, int | None, int]], victim: int = 0) -> nx.DiGraph:
+    """
+    Build a directed graph of reconstructed edges from edge-sampling tuples.
+    Edge direction is from farther -> closer (toward victim).
+    """
+    H = nx.DiGraph()
+    H.add_node(victim)
+
+    by_d = edges_by_distance(samples, victim=victim)
+    for d, edges in by_d.items():
+        for u, v in edges:
+            H.add_edge(u, v)
+    return H
+
+
+def edge_guess_attackers_from_graph(H: nx.DiGraph, victim: int = 0) -> list[int]:
+    """
+    Attackers appear as 'farthest' nodes (no outgoing edge toward victim) in the reconstructed graph.
+    Returns candidate leaves (excluding victim).
+    """
+    candidates = [n for n in H.nodes if n != victim and H.out_degree(n) == 0]
+    return sorted(candidates)
