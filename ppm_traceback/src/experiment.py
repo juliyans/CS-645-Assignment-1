@@ -7,7 +7,7 @@ from src.ppm import (
     node_reconstruct_order, node_guess_attacker_leaf,
     edges_by_distance, edge_reconstruct_path,
     node_guess_two_attackers,
-    edge_build_graph, edge_guess_attackers_from_graph,
+    edge_build_pruned_graph, edge_guess_attackers_from_graph, edge_guess_single_attacker_from_graph,
 )
 
 NORMAL_RATE = 1  # normal leaves send 1 packet per tick
@@ -65,11 +65,10 @@ def run_trial_one_attacker(G: nx.DiGraph, p: float, x: int, seed: int, max_attac
                 if guess == attacker:
                     node_conv = attack_packets_seen
 
-            # Check edge convergence
+            # Check edge convergence (pruned reconstruction graph)
             if edge_conv is None:
-                by_d = edges_by_distance(edge_obs, victim=0)
-                path = edge_reconstruct_path(by_d, victim=0)
-                guess_edge = path[0] if path else None
+                H = edge_build_pruned_graph(edge_obs, victim=0)
+                guess_edge = edge_guess_single_attacker_from_graph(H, victim=0)
                 if guess_edge == attacker:
                     edge_conv = attack_packets_seen
 
@@ -180,12 +179,12 @@ def run_trial_two_attackers(G: nx.DiGraph, p: float, x: int, seed: int, max_atta
                     if set(guesses) == true_set:
                         node_conv = attack_packets_seen
 
-                # Edge convergence: build reconstructed tree and guess leaves
+                # Edge convergence: prune + guess sources
                 if edge_conv is None:
-                    H = edge_build_graph(edge_obs, victim=0)
+                    H = edge_build_pruned_graph(edge_obs, victim=0)
                     guesses_edge = edge_guess_attackers_from_graph(H, victim=0)
-                    # If we recovered at least the two true attackers as leaves, call success
-                    if true_set.issubset(set(guesses_edge)):
+                    # Converged when we recover exactly the true attacker set (no missing, no extras).
+                    if set(guesses_edge) == true_set:
                         edge_conv = attack_packets_seen
 
                 if node_conv is not None and edge_conv is not None:

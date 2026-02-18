@@ -246,10 +246,109 @@ def edge_build_graph(samples: list[tuple[int | None, int | None, int]], victim: 
     return H
 
 
+def _edge_distance_index_to_victim(H: nx.DiGraph, victim: int = 0) -> dict[int, int]:
+    """Return distance *index* to victim for each node in H.
+
+    Our code stores edge tuples under key d where:
+      d == 0 means the router is directly adjacent to the victim.
+
+    In a directed graph where edges point toward the victim (u -> v),
+    the shortest path length L(u,victim) satisfies:
+      L == 1 for an adjacent router.
+
+    So we define the distance *index* as: idx(u) = L(u,victim) - 1.
+    """
+    # Compute shortest path length to victim for all nodes that can reach victim.
+    # Do BFS from victim on the *reversed* graph.
+    rev = H.reverse(copy=False)
+    lengths = nx.single_source_shortest_path_length(rev, victim)
+    idx: dict[int, int] = {}
+    for n, L in lengths.items():
+        if n == victim:
+            continue
+        idx[n] = L - 1
+    return idx
+
+
+def edge_build_pruned_graph(samples: list[tuple[int | None, int | None, int]], victim: int = 0) -> nx.DiGraph:
+    """Build and prune the edge-reconstruction graph.
+
+    This implements the key step in the edge-sampling traceback algorithm:
+    remove any edge (x,y,d) whose recorded distance d does not match the
+    distance from x to the victim in the reconstructed graph.
+
+    We also enforce that edges go one step closer to the victim.
+    """
+    # First build a graph that retains the sampled distance d per edge.
+    by_d = edges_by_distance(samples, victim=victim)
+    H = nx.DiGraph()
+    H.add_node(victim)
+
+    # Store all candidate directed edges with their claimed distance index.
+    # d == 0 corresponds to edges (u -> victim).
+    edges_with_d: list[tuple[int, int, int]] = []
+    for d, edges in by_d.items():
+        for u, v in edges:
+            edges_with_d.append((u, v, d))
+            H.add_edge(u, v)
+
+    # Iteratively prune until stable.
+    changed = True
+    while changed:
+        changed = False
+        idx = _edge_distance_index_to_victim(H, victim=victim)
+        to_remove: list[tuple[int, int]] = []
+
+        for u, v, d in edges_with_d:
+            if not H.has_edge(u, v):
+                continue
+            # If u cannot reach victim in current graph, prune.
+            if u not in idx:
+                to_remove.append((u, v))
+                continue
+
+            # Distance index must match exactly.
+            if idx[u] != d:
+                to_remove.append((u, v))
+                continue
+
+            # Edge must move one step closer toward victim.
+            if v == victim:
+                if d != 0:
+                    to_remove.append((u, v))
+                continue
+            if v not in idx:
+                to_remove.append((u, v))
+                continue
+            if idx[v] != d - 1:
+                to_remove.append((u, v))
+
+        if to_remove:
+            H.remove_edges_from(to_remove)
+            changed = True
+
+    return H
+
+
 def edge_guess_attackers_from_graph(H: nx.DiGraph, victim: int = 0) -> list[int]:
     """
-    Attackers appear as 'farthest' nodes (no outgoing edge toward victim) in the reconstructed graph.
-    Returns candidate leaves (excluding victim).
+    Attackers appear as *sources* in the reconstructed graph.
+    Since edges point toward the victim (u -> v), attackers have in_degree == 0.
+    Returns candidate routers (excluding victim).
     """
-    candidates = [n for n in H.nodes if n != victim and H.out_degree(n) == 0]
+    candidates = [n for n in H.nodes if n != victim and H.in_degree(n) == 0]
     return sorted(candidates)
+
+
+def edge_guess_single_attacker_from_graph(H: nx.DiGraph, victim: int = 0) -> int | None:
+    """Guess a single attacker from a pruned reconstruction graph.
+
+    Strategy:
+      1) take all source candidates (in_degree == 0)
+      2) choose the farthest (largest distance index to victim)
+    """
+    sources = edge_guess_attackers_from_graph(H, victim=victim)
+    if not sources:
+        return None
+    idx = _edge_distance_index_to_victim(H, victim=victim)
+    return max(sources, key=lambda n: idx.get(n, -1))

@@ -3,7 +3,6 @@
 # CS 645 Assignment 1: Probabilistic Packet Marking with Node and Edge Sampling
 # Resources: 
 
-
 import matplotlib.pyplot as plt
 from src.topology import load_topology, validate_tree_topology
 from src.experiment import run_grid_one_attacker, run_grid_two_attackers
