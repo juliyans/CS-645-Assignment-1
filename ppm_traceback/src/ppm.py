@@ -2,6 +2,7 @@ import random
 import networkx as nx
 from dataclasses import dataclass
 from topology import leaves, branch_root_of
+from topology import path_leaf_to_victim
 
 @dataclass(frozen=True)
 class Hosts:
@@ -17,7 +18,7 @@ def choose_hosts(G: nx.DiGraph, num_attackers: int, seed: int = 0) -> Hosts:
 
     leafs = leaves(G)
     if len(leafs) < num_attackers + 1:
-        raise ValueError("Not enough leaf nodes for attackers + at least one benign user")
+        raise ValueError("Not enough leaf nodes for attackers + at least one normal user")
 
     # Group leaves by branch
     by_branch: dict[int, list[int]] = {}
@@ -48,3 +49,25 @@ def choose_hosts(G: nx.DiGraph, num_attackers: int, seed: int = 0) -> Hosts:
 
     normal_users = [lf for lf in leafs if lf not in attackers]
     return Hosts(attackers=attackers, normal_users=normal_users)
+
+@dataclass
+class NodePacket:
+    # Packet header for node sampling
+    # Stores a single router ID and overwritten as it travels
+    node: int | None = None
+
+class NodeSampler:
+    def __init__(self, p: float, seed: int = 0):
+        self.p = p
+        self.rng = random.Random(seed)
+
+    def forward(self, G: nx.DiGraph, source_leaf: int) -> NodePacket:
+        # Simulate one packet traveling from source_leaf to victim
+        # At each router on the path and mark with probability p
+        pkt = NodePacket(node=None)
+
+        for router in path_leaf_to_victim(G, source_leaf):
+            if self.rng.random() < self.p:
+                pkt.node = router  # Overwrite marking
+
+        return pkt

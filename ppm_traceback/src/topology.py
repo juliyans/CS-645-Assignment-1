@@ -55,8 +55,8 @@ def validate_tree_topology(G: nx.DiGraph) -> None:
     routers = [n for n in G.nodes if n != VICTIM]
     if not (ROUTER_MIN <= len(routers) <= ROUTER_MAX):
         raise ValueError(
-            f"Router count must be {ROUTER_MIN}-{ROUTER_MAX} excluding victim. "
-            f"Found {len(routers)}."
+            f"Router count must be {ROUTER_MIN}-{ROUTER_MAX} excluding victim"
+            f"Found {len(routers)}"
         )
 
     # Branch count constraint/number of direct children of the victim
@@ -86,8 +86,18 @@ def branch_root_of(G: nx.DiGraph, node: int) -> int:
     while True:
         preds = list(G.predecessors(cur))
         if not preds:
-            return cur  # should only happen for victim
+            return cur  # Should only happen for victim
         p = preds[0]
         if p == VICTIM:
             return cur
         cur = p
+
+def path_leaf_to_victim(G: nx.DiGraph, leaf: int) -> list[int]:
+    # Return the routers along the unique path from leaf to victim 
+    # In order from leaf to closest router to victim
+    path = []
+    cur = leaf
+    while cur != VICTIM:
+        path.append(cur)
+        cur = list(G.predecessors(cur))[0]  # unique parent because tree
+    return path

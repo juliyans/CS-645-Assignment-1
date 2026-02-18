@@ -1,6 +1,7 @@
 import networkx as nx
 from topology import load_topology, validate_tree_topology, leaves, branch_root_of
 from ppm import choose_hosts
+from ppm import NodeSampler
 
 def main():
     G = load_topology("data/topology1.txt")
@@ -30,6 +31,14 @@ def main():
 
     h2 = choose_hosts(G, num_attackers=2, seed=42)
     print(f"2 attackers: attackers={h2.attackers}, normal user={sorted(h2.normal_users)}")
+
+    print("\n--- Node sampling marking test ---")
+    sampler = NodeSampler(p=0.5, seed=1)
+
+    test_leaf = h1.attackers[0]   # Use the chosen attacker leaf
+    for i in range(10):
+        pkt = sampler.forward(G, test_leaf)
+        print(f"packet {i}: marked_node={pkt.node}")
 
 if __name__ == "__main__":
     main()
