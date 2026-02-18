@@ -1,9 +1,12 @@
 import networkx as nx
-from topology import load_topology, validate_tree_topology, leaves, branch_root_of
-from ppm import choose_hosts
-from ppm import NodeSampler
-from ppm import EdgeSampler
-from ppm import collect_node_samples, collect_edge_samples, edges_by_distance
+
+from src.topology import load_topology, validate_tree_topology, leaves, branch_root_of
+from src.ppm import (
+    choose_hosts, NodeSampler, EdgeSampler,
+    collect_node_samples, collect_edge_samples, edges_by_distance,
+    node_reconstruct_order, node_guess_attacker_leaf, edge_reconstruct_path
+)
+from src.experiment import run_trial_one_attacker
 
 def main():
     G = load_topology("data/topology1.txt")
@@ -16,7 +19,6 @@ def main():
     for lf in leafs:
         br = branch_root_of(G, lf)
         by_branch.setdefault(br, []).append(lf)
-
 
     print("Topology works")
     print(f"Routers: {len([n for n in G.nodes if n != 0])}")
@@ -70,6 +72,20 @@ def main():
     print("Collected edge sets by distance:")
     for d in sorted(by_d.keys()):
         print(f"  d={d}: {sorted(by_d[d])}")
+
+    print("\nReconstruction test")
+    ordered = node_reconstruct_order(node_obs)
+    guess_node = node_guess_attacker_leaf(G, ordered)
+    print(f"Node sampling guessed attacker leaf: {guess_node}")
+
+    path = edge_reconstruct_path(by_d, victim=0)
+    print(f"Edge sampling reconstructed path (attacker to closest): {path}")
+    print(f"Edge sampling guessed attacker leaf: {path[0] if path else None}")
+
+    print("\nFull trial test (1 attacker, with normal user traffic)")
+    node_ok, edge_ok, node_conv, edge_conv = run_trial_one_attacker(G, p=0.5, x=10, seed=123)
+    print(f"node_ok={node_ok}, edge_ok={edge_ok}")
+    print(f"node_conv_packets={node_conv}, edge_conv_packets={edge_conv}")
 
 if __name__ == "__main__":
     main()

@@ -1,9 +1,9 @@
 import random
 import networkx as nx
 from dataclasses import dataclass
-from topology import leaves, branch_root_of
-from topology import path_leaf_to_victim
+from src.topology import leaves, branch_root_of, path_leaf_to_victim
 from collections import defaultdict
+from collections import Counter
 
 @dataclass(frozen=True)
 class Hosts:
@@ -148,3 +148,54 @@ def edges_by_distance(samples: list[tuple[int | None, int | None, int]], victim:
                 continue
             by_d[d].add((s, e))
     return dict(by_d)
+
+def node_reconstruct_order(node_obs: list[int]) -> list[int]:
+    # Return routers sorted by frequency descending.
+    # Closer-to-victim routers tend to be sampled more often.
+    counts = Counter(node_obs)
+    return [n for n, _ in counts.most_common()]
+
+def node_guess_attacker_leaf(G: nx.DiGraph, ordered_nodes: list[int]) -> int | None:
+    # Choose the farthest router as the least frequent router in ordered list
+    # Return a leaf in that router's subtree
+    if not ordered_nodes:
+        return None
+
+    farthest = ordered_nodes[-1]  # Least frequent
+    # choose a leaf in farthest's subtree
+    stack = [farthest]
+    leafs = []
+    while stack:
+        u = stack.pop()
+        kids = list(G.successors(u))
+        if not kids:
+            leafs.append(u)
+        else:
+            stack.extend(kids)
+    return min(leafs) if leafs else farthest
+
+def edge_reconstruct_path(by_d: dict[int, set[tuple[int, int]]], victim: int = 0) -> list[int]:
+    # Reconstruct a single path back to attacker using the distance-indexed edge sets.
+    # Returns routers from attacker-side toward victim
+    if 0 not in by_d or not by_d[0]:
+        return []
+
+    # Choose one edge at d=0 (R0 to victim)
+    r0 = sorted(by_d[0])[0][0]
+    path = [r0]  # Closest router to victim
+
+    cur = r0
+    d = 1
+    while d in by_d:
+        # Find an edge at distance d whose end matches current router
+        candidates = [s for (s, e) in by_d[d] if e == cur]
+        if not candidates:
+            break
+        nxt = sorted(candidates)[0]
+        path.append(nxt)
+        cur = nxt
+        d += 1
+
+    # Path is currently (closest to farthest) so reverse to (farthest to closest)
+    path.reverse()
+    return path
