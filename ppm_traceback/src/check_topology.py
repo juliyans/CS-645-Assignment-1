@@ -2,6 +2,8 @@ import networkx as nx
 from topology import load_topology, validate_tree_topology, leaves, branch_root_of
 from ppm import choose_hosts
 from ppm import NodeSampler
+from ppm import EdgeSampler
+from ppm import collect_node_samples, collect_edge_samples, edges_by_distance
 
 def main():
     G = load_topology("data/topology1.txt")
@@ -32,13 +34,42 @@ def main():
     h2 = choose_hosts(G, num_attackers=2, seed=42)
     print(f"2 attackers: attackers={h2.attackers}, normal user={sorted(h2.normal_users)}")
 
-    print("\n--- Node sampling marking test ---")
+    print("\nNode sampling marking test")
     sampler = NodeSampler(p=0.5, seed=1)
 
     test_leaf = h1.attackers[0]   # Use the chosen attacker leaf
     for i in range(10):
         pkt = sampler.forward(G, test_leaf)
         print(f"packet {i}: marked_node={pkt.node}")
+
+    print("\nEdge sampling marking test")
+    edge_sampler = EdgeSampler(p=0.5, seed=1)
+
+    test_leaf = h1.attackers[0]  # Attacker leaf
+    for i in range(10):
+        pkt = edge_sampler.forward(G, test_leaf)
+        print(f"packet {i}: start={pkt.start}, end={pkt.end}, distance={pkt.distance}")
+
+    print("\nVictim collection test (1 attacker only)")
+    p = 0.5
+    x = 10
+
+    attacker = h1.attackers[0]
+
+    # For this test, just collect a fixed number of attack packets
+    node_sampler = NodeSampler(p=p, seed=7)
+    edge_sampler = EdgeSampler(p=p, seed=7)
+
+    # Collect 200 attack packets from attacker only (no normal users for now)
+    node_obs = collect_node_samples(G, node_sampler, sources=[attacker], packets_per_source=[200])
+    edge_obs = collect_edge_samples(G, edge_sampler, sources=[attacker], packets_per_source=[200])
+
+    print(f"Collected node marks: {len(node_obs)} (out of 200 packets)")
+    by_d = edges_by_distance(edge_obs, victim=0)
+
+    print("Collected edge sets by distance:")
+    for d in sorted(by_d.keys()):
+        print(f"  d={d}: {sorted(by_d[d])}")
 
 if __name__ == "__main__":
     main()
